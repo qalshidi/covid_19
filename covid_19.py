@@ -139,7 +139,7 @@ def make_plots(data, search=SEARCH):
         search (tuple): Tuple of strings to search ('header', 'value')
     """
 
-    figure, axis = plt.subplots(2, 1, sharex=True)
+    _, axis = plt.subplots(2, 1, sharex=True)
     plot_options = {}
     time_series = gather_data(data, search)
     mtimes = [mdates.date2num(time) for time in time_series['times']]
@@ -174,9 +174,9 @@ def make_plots(data, search=SEARCH):
 
     axis[1].set_title(r'Basic reproduction ratio $R_0$')
     axis[1].legend()
-    figure.show()
-    # plt.show(figure)
-    # plt.tight_layout()
+    # figure.show()
+    plt.show()
+    plt.tight_layout()
 
 
 if __name__ == '__main__':
