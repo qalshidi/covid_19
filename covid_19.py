@@ -3,7 +3,7 @@
 """
 import csv
 import datetime as dt
-import urllib
+import urllib.request
 import numpy as np
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
