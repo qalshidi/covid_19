@@ -49,17 +49,12 @@ def get_covid_data(url_confirmed=URL_BASE+URL_CONFIRMED,
 
 def basic_reproduction_ratio(time_series):
     """Returns the basic reproduction ratio as well as gamma and beta"""
-    d_t = np.diff(time_series['mtimes'])
     population = float(time_series['population'])
-    d_s = np.diff(time_series['susceptible'])
-    ds_dt = d_s/d_t
-    d_i = np.diff(time_series['infected'])
-    di_dt = d_i/d_t
-    dr_dt = -ds_dt-di_dt
     infected = time_series['infected'][1:].astype(float)
     susceptible = time_series['susceptible'][1:].astype(float)
+    ds_dt, _, dr_dt = derivatives(time_series)
     gamma = dr_dt/infected
-    beta = -population*d_s/d_t/infected/susceptible
+    beta = -population*ds_dt/infected/susceptible
     return beta/gamma, beta, gamma
 
 
@@ -132,6 +127,16 @@ def gather_data(data, search):
     return time_series
 
 
+def derivatives(time_series):
+    """Returns the derivatives with respect to time"""
+    d_t = np.diff(time_series['mtimes'])
+    d_s = np.diff(time_series['susceptible'])
+    ds_dt = d_s/d_t
+    d_i = np.diff(time_series['infected'])
+    di_dt = d_i/d_t
+    dr_dt = -ds_dt-di_dt
+    return ds_dt, di_dt, dr_dt
+
 def make_plots(data, search=SEARCH):
     """Makes plots of COVID-19 data.
 
@@ -140,48 +145,68 @@ def make_plots(data, search=SEARCH):
         search (tuple): Tuple of strings to search ('header', 'value')
     """
 
-    _, axis = plt.subplots(1, 2, sharex='col')
+    _, axis = plt.subplots(2, 2, sharex='col')
     plot_options = {}
     time_series = gather_data(data, search)
     mtimes = time_series['mtimes']
     population = time_series['population']
-    axis[0].plot_date(mtimes, time_series['susceptible'],
-                      color='grey',
-                      label=f'susceptible ({str(population/1e6)[:4]})M',
-                      **plot_options)
-    axis[0].plot_date(mtimes, time_series['infected'],
-                      color='blue', label='infected', **plot_options)
-    axis[0].plot_date(mtimes, time_series['removed'],
-                      color='orange', label='removed', **plot_options)
-    axis[0].fill_between(mtimes,
-                         time_series['infected'],
-                         time_series['susceptible'],
-                         facecolor='grey', alpha=0.2)
-    axis[0].fill_between(mtimes,
-                         time_series['infected'],
-                         time_series['removed'],
-                         facecolor='blue', alpha=0.5)
-    axis[0].fill_between(mtimes,
-                         0,
-                         time_series['removed'],
-                         facecolor='orange', alpha=0.5)
-    axis[0].set_ylim((0, 1.25*max(time_series['infected'])))
-    axis[0].set_xlim((mtimes[0], mtimes[-1]))
-    axis[0].set_title(SEARCH[0] + ': ' + SEARCH[1])
-    axis[0].legend()
+    axis[0][0].plot_date(mtimes, time_series['susceptible'],
+                         color='grey',
+                         label=f'susceptible ({str(population/1e6)[:4]})M',
+                         **plot_options)
+    axis[0][0].plot_date(mtimes, time_series['infected'],
+                         color='blue', label='infected', **plot_options)
+    axis[0][0].plot_date(mtimes, time_series['removed'],
+                         color='orange', label='removed', **plot_options)
+    axis[0][0].fill_between(mtimes,
+                            time_series['infected'],
+                            time_series['susceptible'],
+                            facecolor='grey', alpha=0.2)
+    axis[0][0].fill_between(mtimes,
+                            time_series['infected'],
+                            time_series['removed'],
+                            facecolor='blue', alpha=0.5)
+    axis[0][0].fill_between(mtimes,
+                            0,
+                            time_series['removed'],
+                            facecolor='orange', alpha=0.5)
+    axis[0][0].set_ylim((0, 1.25*max(time_series['infected'])))
+    axis[0][0].set_xlim((mtimes[0], mtimes[-1]))
+    axis[0][0].set_title(SEARCH[0] + ': ' + SEARCH[1])
+    axis[0][0].legend()
+
+    ds_dt, di_dt, dr_dt = derivatives(time_series)
+    axis[1][0].plot_date(mtimes[1:], ds_dt,
+                         color='grey',
+                         label=r'$\frac{dS}{dt}$',
+                         **plot_options)
+    axis[1][0].plot_date(mtimes[1:], di_dt,
+                         color='blue',
+                         label=r'$\frac{dI}{dt}$',
+                         **plot_options)
+    axis[1][0].plot_date(mtimes[1:], dr_dt,
+                         color='orange',
+                         label=r'$\frac{dR}{dt}$',
+                         **plot_options)
+    axis[1][0].legend()
+
     ratio, beta, gamma = basic_reproduction_ratio(time_series)
 
     poly_y = ratio[np.argwhere(np.isfinite(ratio))].flatten()
     poly_x = mtimes[np.argwhere(np.isfinite(ratio))].flatten()
     coeff, y_interc = np.polyfit(np.log(poly_x), poly_y, 1)
 
-    axis[1].plot_date(mtimes[1:], ratio, color='green', label=r'$R_0$')
-    axis[1].plot_date(poly_x, y_interc+coeff*np.log(poly_x),
-                      color='black', label=r'fit', marker='', linestyle='-')
+    axis[0][1].plot_date(mtimes[1:], ratio, color='green', label=r'$R_0$')
+    axis[0][1].plot_date(poly_x, y_interc+coeff*np.log(poly_x),
+                         label=f'fit ({str(int(coeff))} ' + r'$\log(t)$)',
+                         color='black', marker='', linestyle='-')
 
-    axis[1].set_title(r'Basic reproduction ratio $R_0$')
-    axis[0].set_xlim((poly_x[0], poly_x[-1]))
-    axis[1].legend()
+    axis[0][1].set_title(r'Basic reproduction ratio $R_0$')
+    axis[0][1].set_xlim((poly_x[0], poly_x[-1]))
+    axis[0][1].legend()
+    axis[1][1].plot_date(mtimes[1:], gamma, label=r'$\gamma$')
+    axis[1][1].plot_date(mtimes[1:], beta, label=r'$\beta$')
+    axis[1][1].legend()
     # figure.show()
     plt.show()
     plt.tight_layout()
