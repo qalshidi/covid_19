@@ -71,8 +71,7 @@ def gather_data(data, search):
         search (tuple): Tuple of strings to search ('header', 'value')
 
     Returns:
-        (list(datetime.datetime), np.array, np.array, np.array) of
-        times, susceptible, infected, removed
+        (dict) of 'times', 'susceptible', 'infected', 'removed'
     """
     search_header, search_value = search[0], search[1]
 
@@ -128,6 +127,8 @@ def gather_data(data, search):
                                        dtype=int)
     time_series['removed'] = np.array(time_series['removed'],
                                       dtype=int)
+    time_series['mtimes'] = np.array(time_series['mtimes'],
+                                     dtype=int)
     return time_series
 
 
@@ -139,10 +140,10 @@ def make_plots(data, search=SEARCH):
         search (tuple): Tuple of strings to search ('header', 'value')
     """
 
-    _, axis = plt.subplots(2, 1, sharex=True)
+    _, axis = plt.subplots(1, 2, sharex='col')
     plot_options = {}
     time_series = gather_data(data, search)
-    mtimes = [mdates.date2num(time) for time in time_series['times']]
+    mtimes = time_series['mtimes']
     population = time_series['population']
     axis[0].plot_date(mtimes, time_series['susceptible'],
                       color='grey',
@@ -170,9 +171,16 @@ def make_plots(data, search=SEARCH):
     axis[0].legend()
     ratio, beta, gamma = basic_reproduction_ratio(time_series)
 
+    poly_y = ratio[np.argwhere(np.isfinite(ratio))].flatten()
+    poly_x = mtimes[np.argwhere(np.isfinite(ratio))].flatten()
+    coeff, y_interc = np.polyfit(np.log(poly_x), poly_y, 1)
+
     axis[1].plot_date(mtimes[1:], ratio, color='green', label=r'$R_0$')
+    axis[1].plot_date(poly_x, y_interc+coeff*np.log(poly_x),
+                      color='black', label=r'fit', marker='', linestyle='-')
 
     axis[1].set_title(r'Basic reproduction ratio $R_0$')
+    axis[0].set_xlim((poly_x[0], poly_x[-1]))
     axis[1].legend()
     # figure.show()
     plt.show()
