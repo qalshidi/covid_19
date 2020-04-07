@@ -40,22 +40,26 @@ def get_covid_data(url_confirmed=URL_BASE+URL_CONFIRMED,
         url_deaths (str): url for csv with death cases.
 
     Returns:
-        (dict) of 'confirmed' and 'deaths'
+        (dict) of 'confirmed' and 'removed'
     """
     data_confirmed = _parse_url_csv(url_confirmed)
     data_deaths = _parse_url_csv(url_deaths)
     return {'confirmed': data_confirmed, 'deaths': data_deaths}
 
 
-def basic_reproduction_ratio(times, susceptible, infected, removed):
+def basic_reproduction_ratio(time_series):
     """Returns the basic reproduction ratio as well as gamma and beta"""
-    time = np.array([time.timestamp() for time in times], dtype=float)
-    d_t = np.diff(time)
-    population = susceptible[0]
-    d_s = np.diff(susceptible)
-    d_r = np.diff(removed)
-    gamma = d_r/d_t/infected[1:]
-    beta = -population*d_s/d_t/infected[1:]/susceptible[1:]
+    d_t = np.diff(time_series['mtimes'])
+    population = float(time_series['population'])
+    d_s = np.diff(time_series['susceptible'])
+    ds_dt = d_s/d_t
+    d_i = np.diff(time_series['infected'])
+    di_dt = d_i/d_t
+    dr_dt = -ds_dt-di_dt
+    infected = time_series['infected'][1:].astype(float)
+    susceptible = time_series['susceptible'][1:].astype(float)
+    gamma = dr_dt/infected
+    beta = -population*d_s/d_t/infected/susceptible
     return beta/gamma, beta, gamma
 
 
@@ -73,39 +77,58 @@ def gather_data(data, search):
     search_header, search_value = search[0], search[1]
 
     population = 0
-    for header, local_pop in zip(data['deaths'][search_header],
-                                 data['deaths']['Population']):
-        if header == search_value:
-            population += int(local_pop)
+    local_pop = (num for header_value, num in zip(data['deaths'][search_header],
+                                                  data['deaths']['Population'])
+                 if header_value == search_value)
+    for num in local_pop:
+        population += int(num)
 
     # build time series
-    times = []
-    infected = []
-    susceptible = []
-    deaths = []
-    for date in data['confirmed']:
-        if date.endswith('20'):
-            times.append(dt.datetime.strptime(date, '%m/%d/%y'))
+    time_series = {
+        'times': [],
+        'mtimes': [],
+        'infected': [],
+        'susceptible': [],
+        'deaths': [],  # figure this out from removed
+        'removed': [],  # figure this out from deaths
+        'population': population
+        }
 
-            # count
-            num_of_deaths = 0
-            for header, local_pop in zip(data['deaths'][search_header],
-                                         data['deaths'][date]):
-                if header == search_value:
-                    num_of_deaths += int(local_pop)
-            deaths.append(num_of_deaths)
-            num_of_infected = 0
-            for header, local_pop in zip(data['confirmed'][search_header],
-                                         data['confirmed'][date]):
-                if header == search_value:
-                    num_of_infected += int(local_pop)
-            susceptible.append(population-num_of_infected-num_of_deaths)
-            infected.append(num_of_infected)
+    # Go through days
+    dates = (date for date in data['confirmed']
+             if date.endswith('20') or date.endswith('19'))
+    for date in dates:
 
-    return (times,
-            np.array(susceptible, dtype=int),
-            np.array(infected, dtype=int),
-            np.array(deaths, dtype=int))
+        day = dt.datetime.strptime(date, '%m/%d/%y')
+        time_series['times'].append(day)
+        time_series['mtimes'].append(mdates.date2num(day))
+
+        # count
+        val_deaths = (num for header_value, num in zip(
+            data['deaths'][search_header], data['deaths'][date])
+                      if header_value == search_value)
+        num_of_deaths = 0
+        for num in val_deaths:
+            num_of_deaths += int(num)
+        time_series['deaths'].append(num_of_deaths)
+        time_series['removed'].append(num_of_deaths)
+
+        val_infected = (num for header_value, num in zip(
+            data['confirmed'][search_header], data['confirmed'][date])
+                        if header_value == search_value)
+        num_of_infected = 0
+        for num in val_infected:
+            num_of_infected += int(num)
+        time_series['susceptible'].append(population-num_of_infected-num_of_deaths)
+        time_series['infected'].append(num_of_infected)
+
+    time_series['susceptible'] = np.array(time_series['susceptible'],
+                                          dtype=int)
+    time_series['infected'] = np.array(time_series['infected'],
+                                       dtype=int)
+    time_series['removed'] = np.array(time_series['removed'],
+                                      dtype=int)
+    return time_series
 
 
 def make_plots(data, search=SEARCH):
@@ -116,47 +139,44 @@ def make_plots(data, search=SEARCH):
         search (tuple): Tuple of strings to search ('header', 'value')
     """
 
-    _, axis = plt.subplots(2, 1, sharex=True)
+    figure, axis = plt.subplots(2, 1, sharex=True)
     plot_options = {}
-    times, susceptible, infected, deaths = gather_data(data, search)
-    mtimes = [mdates.date1num(time) for time in times]
-    axis[0].plot_date(mtimes, susceptible,
+    time_series = gather_data(data, search)
+    mtimes = [mdates.date2num(time) for time in time_series['times']]
+    population = time_series['population']
+    axis[0].plot_date(mtimes, time_series['susceptible'],
                       color='grey',
-                      label=f'susceptible ({str(susceptible[0]/1e6)[:4]})M',
+                      label=f'susceptible ({str(population/1e6)[:4]})M',
                       **plot_options)
-    axis[0].plot_date(mtimes, infected,
+    axis[0].plot_date(mtimes, time_series['infected'],
                       color='blue', label='infected', **plot_options)
-    axis[0].plot_date(mtimes, deaths,
-                      color='orange', label='deaths', **plot_options)
-    axis[0].fill_between(mtimes, infected, susceptible,
+    axis[0].plot_date(mtimes, time_series['removed'],
+                      color='orange', label='removed', **plot_options)
+    axis[0].fill_between(mtimes,
+                         time_series['infected'],
+                         time_series['susceptible'],
                          facecolor='grey', alpha=0.2)
-    axis[0].fill_between(mtimes, infected, deaths, facecolor='blue', alpha=0.5)
-    axis[0].fill_between(mtimes, 0, deaths, facecolor='orange', alpha=0.5)
-    axis[0].set_ylim((0, 1.25*max(infected)))
+    axis[0].fill_between(mtimes,
+                         time_series['infected'],
+                         time_series['removed'],
+                         facecolor='blue', alpha=0.5)
+    axis[0].fill_between(mtimes,
+                         0,
+                         time_series['removed'],
+                         facecolor='orange', alpha=0.5)
+    axis[0].set_ylim((0, 1.25*max(time_series['infected'])))
     axis[0].set_xlim((mtimes[0], mtimes[-1]))
     axis[0].set_title(SEARCH[0] + ': ' + SEARCH[1])
     axis[0].legend()
-    ratio, beta, gamma = basic_reproduction_ratio(times,
-                                                  susceptible,
-                                                  infected,
-                                                  deaths)
-
-    # coeff, const = np.polyfit(mtimes[1:],
-    #                           np.log(ratio),
-    #                           1,
-    #                           w=np.sqrt(ratio))
-    # axis[1].plot_date(mtimes[1:], np.exp(const)*np.exp(coeff*mdates[1:]))
-
-    coeff, y_interc = np.polyfit(np.log(mtimes[1:]), ratio, 1)
-    axis[1].plot_date(mtimes[1:], y_interc+coeff*np.log(mtimes[1:]),
-                      color='black', label=r'$R_0$')
+    ratio, beta, gamma = basic_reproduction_ratio(time_series)
 
     axis[1].plot_date(mtimes[1:], ratio, color='green', label=r'$R_0$')
 
     axis[1].set_title(r'Basic reproduction ratio $R_0$')
     axis[1].legend()
-    plt.show()
-    plt.tight_layout()
+    figure.show()
+    # plt.show(figure)
+    # plt.tight_layout()
 
 
 if __name__ == '__main__':
