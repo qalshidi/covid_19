@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Plotting COVID-19
+"""Plotting COVID-19 for my own curiosity
 """
 import csv
 import datetime as dt
@@ -119,7 +119,7 @@ def make_plots(data, search=SEARCH):
     _, axis = plt.subplots(2, 1, sharex=True)
     plot_options = {}
     times, susceptible, infected, deaths = gather_data(data, search)
-    mtimes = [mdates.date2num(time) for time in times]
+    mtimes = [mdates.date1num(time) for time in times]
     axis[0].plot_date(mtimes, susceptible,
                       color='grey',
                       label=f'susceptible ({str(susceptible[0]/1e6)[:4]})M',
