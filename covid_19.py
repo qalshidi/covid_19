@@ -13,11 +13,13 @@ URL_BASE += 'csse_covid_19_data/csse_covid_19_time_series/'
 URL_CONFIRMED = 'time_series_covid19_confirmed_US.csv'
 URL_DEATHS = 'time_series_covid19_deaths_US.csv'
 SEARCH = ('Province_State', 'Michigan')
-# SEARCH = ('Province_State', 'Massachusetts')
+# SEARCH = ('code3', '840')  # NYC
+# SEARCH = ('Province_State', 'New York')
 
 
 def _parse_url_csv(url):
-    """Parse the url csv file into a dict"""
+    """Parse the url csv file into a dict
+    """
     return_data = {}
     with urllib.request.urlopen(url) as datafile:
         lines = [line.decode('ascii') for line in list(datafile)]
@@ -48,7 +50,8 @@ def get_covid_data(url_confirmed=URL_BASE+URL_CONFIRMED,
 
 
 def basic_reproduction_ratio(time_series):
-    """Returns the basic reproduction ratio as well as gamma and beta"""
+    """Returns the basic reproduction ratio as well as gamma and beta
+    """
     population = float(time_series['population'])
     infected = time_series['infected'][1:].astype(float)
     susceptible = time_series['susceptible'][1:].astype(float)
@@ -128,7 +131,8 @@ def gather_data(data, search):
 
 
 def derivatives(time_series):
-    """Returns the derivatives with respect to time"""
+    """Returns the derivatives with respect to time
+    """
     d_t = np.diff(time_series['mtimes'])
     d_s = np.diff(time_series['susceptible'])
     ds_dt = d_s/d_t
@@ -136,6 +140,130 @@ def derivatives(time_series):
     di_dt = d_i/d_t
     dr_dt = -ds_dt-di_dt
     return ds_dt, di_dt, dr_dt
+
+
+def make_sir_plot(axis, time_series, **kwargs):
+    """Makes the SIR plot
+    """
+    population = time_series['population']
+    mtimes = time_series['mtimes']
+    s_color = kwargs.get('s_color', 'grey')
+    i_color = kwargs.get('i_color', 'blue')
+    r_color = kwargs.get('r_color', 'orange')
+    axis.plot_date(mtimes, time_series['susceptible'],
+                   color=s_color,
+                   label=f'susceptible ({_pretty_num_str(population)})',
+                   **kwargs)
+    axis.plot_date(mtimes, time_series['infected'],
+                   color=i_color, label='infected', **kwargs)
+    axis.plot_date(mtimes, time_series['removed'],
+                   color=r_color, label='removed', **kwargs)
+    axis.fill_between(mtimes,
+                      time_series['infected'],
+                      time_series['susceptible'],
+                      facecolor=s_color, alpha=0.2)
+    axis.fill_between(mtimes,
+                      time_series['infected'],
+                      time_series['removed'],
+                      facecolor=i_color, alpha=0.5)
+    axis.fill_between(mtimes,
+                      0,
+                      time_series['removed'],
+                      facecolor=r_color, alpha=0.5)
+    axis.set_ylim((0, 1.25*max(time_series['infected'])))
+    axis.set_xlim((mtimes[0], mtimes[-1]))
+    axis.set_title(SEARCH[0] + ': ' + SEARCH[1])
+    axis.legend()
+
+def make_derivative_plot(axis, time_series, **kwargs):
+    """Makes plots of dS/dt dI/dt dR/dt
+    """
+    ds_dt, di_dt, dr_dt = derivatives(time_series)
+    mtimes = time_series['mtimes']
+    s_color = kwargs.get('s_color', 'grey')
+    i_color = kwargs.get('i_color', 'blue')
+    r_color = kwargs.get('r_color', 'orange')
+    axis.plot_date(mtimes[1:], ds_dt,
+                   color=s_color,
+                   label=r'$\frac{dS}{dt}$',
+                   **kwargs)
+    axis.plot_date(mtimes[1:], di_dt,
+                   color=i_color,
+                   label=r'$\frac{dI}{dt}$',
+                   **kwargs)
+    axis.plot_date(mtimes[1:], dr_dt,
+                   color=r_color,
+                   label=r'$\frac{dR}{dt}$',
+                   **kwargs)
+    axis.legend()
+
+def make_r0_plot(axis, time_series, **kwargs):
+    """Makes basic reproduction ratio plot
+    """
+    mtimes = time_series['mtimes']
+    ratio, *_ = basic_reproduction_ratio(time_series)
+
+    poly_y = ratio[np.argwhere(np.isfinite(ratio))].flatten()
+    poly_x = mtimes[np.argwhere(np.isfinite(ratio))].flatten()
+    coeff, y_interc = np.polyfit(np.log(poly_x), poly_y, 1)
+
+    r0_color = kwargs.get('r0_color', 'green')
+    r0_fit_color = kwargs.get('r0_fit_color', 'black')
+    axis.plot_date(mtimes[1:], ratio,
+                   color=r0_color,
+                   label=r'$R_0$',
+                   **kwargs)
+    axis.plot_date(poly_x, y_interc+coeff*np.log(poly_x),
+                   label=f'fit ({str(int(coeff))} ' + r'$\log(t)$)',
+                   color=r0_fit_color,
+                   marker='',
+                   linestyle='-',
+                   **kwargs)
+
+    axis.set_title(r'Basic reproduction ratio $R_0$')
+    axis.set_xlim((poly_x[0], poly_x[-1]))
+    axis.legend()
+
+def make_gamma_beta_plot(axis, time_series, **kwargs):
+    """Make plots for gamma and beta
+    """
+    _, gamma, beta = basic_reproduction_ratio(time_series)
+    mtimes = time_series['mtimes']
+    axis.plot_date(mtimes[1:], gamma, label=r'$\gamma$', **kwargs)
+    axis.plot_date(mtimes[1:], beta, label=r'$\beta$', **kwargs)
+    axis.legend()
+
+def _pretty_num_str(number, length=1):
+    """Returns a string of the number in a prettier way.
+
+    Args:
+        number (int, float): Number you want to prettify into string.
+        length (int, default=1): Number of decimal places. 0 means round to
+                                 integer.
+
+    Examples:
+        ```python
+        _pretty_num_str(1000, length=0)
+        # 1k
+        ```
+    """
+    num_str = str(number)
+    suffixes = {
+        2: (1, '', ''),
+        4: (1000, 'k', 'thousand'),
+        7: (1e6, 'M', 'million'),
+        10: (1e9, 'B', 'billion'),
+        }
+    nearest_place = _nearest(len(num_str), suffixes)
+    suffix = suffixes[nearest_place]
+    return str(round(number/suffix[0], length)) + suffix[1]
+
+
+def _nearest(pivot, items):
+    """Returns nearest point
+    """
+    return min(items, key=lambda x: abs(x - pivot))
+
 
 def make_plots(data, search=SEARCH):
     """Makes plots of COVID-19 data.
@@ -146,67 +274,14 @@ def make_plots(data, search=SEARCH):
     """
 
     _, axis = plt.subplots(2, 2, sharex='col')
-    plot_options = {}
     time_series = gather_data(data, search)
-    mtimes = time_series['mtimes']
-    population = time_series['population']
-    axis[0][0].plot_date(mtimes, time_series['susceptible'],
-                         color='grey',
-                         label=f'susceptible ({str(population/1e6)[:4]})M',
-                         **plot_options)
-    axis[0][0].plot_date(mtimes, time_series['infected'],
-                         color='blue', label='infected', **plot_options)
-    axis[0][0].plot_date(mtimes, time_series['removed'],
-                         color='orange', label='removed', **plot_options)
-    axis[0][0].fill_between(mtimes,
-                            time_series['infected'],
-                            time_series['susceptible'],
-                            facecolor='grey', alpha=0.2)
-    axis[0][0].fill_between(mtimes,
-                            time_series['infected'],
-                            time_series['removed'],
-                            facecolor='blue', alpha=0.5)
-    axis[0][0].fill_between(mtimes,
-                            0,
-                            time_series['removed'],
-                            facecolor='orange', alpha=0.5)
-    axis[0][0].set_ylim((0, 1.25*max(time_series['infected'])))
-    axis[0][0].set_xlim((mtimes[0], mtimes[-1]))
-    axis[0][0].set_title(SEARCH[0] + ': ' + SEARCH[1])
-    axis[0][0].legend()
 
-    ds_dt, di_dt, dr_dt = derivatives(time_series)
-    axis[1][0].plot_date(mtimes[1:], ds_dt,
-                         color='grey',
-                         label=r'$\frac{dS}{dt}$',
-                         **plot_options)
-    axis[1][0].plot_date(mtimes[1:], di_dt,
-                         color='blue',
-                         label=r'$\frac{dI}{dt}$',
-                         **plot_options)
-    axis[1][0].plot_date(mtimes[1:], dr_dt,
-                         color='orange',
-                         label=r'$\frac{dR}{dt}$',
-                         **plot_options)
-    axis[1][0].legend()
+    make_sir_plot(axis[0][0], time_series)
+    make_derivative_plot(axis[1][0], time_series)
+    make_r0_plot(axis[0][1], time_series)
+    make_gamma_beta_plot(axis[1][1], time_series)
 
-    ratio, beta, gamma = basic_reproduction_ratio(time_series)
 
-    poly_y = ratio[np.argwhere(np.isfinite(ratio))].flatten()
-    poly_x = mtimes[np.argwhere(np.isfinite(ratio))].flatten()
-    coeff, y_interc = np.polyfit(np.log(poly_x), poly_y, 1)
-
-    axis[0][1].plot_date(mtimes[1:], ratio, color='green', label=r'$R_0$')
-    axis[0][1].plot_date(poly_x, y_interc+coeff*np.log(poly_x),
-                         label=f'fit ({str(int(coeff))} ' + r'$\log(t)$)',
-                         color='black', marker='', linestyle='-')
-
-    axis[0][1].set_title(r'Basic reproduction ratio $R_0$')
-    axis[0][1].set_xlim((poly_x[0], poly_x[-1]))
-    axis[0][1].legend()
-    axis[1][1].plot_date(mtimes[1:], gamma, label=r'$\gamma$')
-    axis[1][1].plot_date(mtimes[1:], beta, label=r'$\beta$')
-    axis[1][1].legend()
     # figure.show()
     plt.show()
     plt.tight_layout()
