@@ -17,6 +17,12 @@ SEARCH = ('Province_State', 'Michigan')
 # SEARCH = ('Province_State', 'New York')
 
 
+def _nearest(pivot, items):
+    """Returns nearest point
+    """
+    return min(items, key=lambda x: abs(x - pivot))
+
+
 def _parse_url_csv(url):
     """Parse the url csv file into a dict
     """
@@ -31,6 +37,32 @@ def _parse_url_csv(url):
             for key, value in row.items():
                 return_data[key].append(value)
     return return_data
+
+
+def _pretty_num_str(number, length=1):
+    """Returns a string of the number in a prettier way.
+
+    Args:
+        number (int, float): Number you want to prettify into string.
+        length (int, default=1): Number of decimal places. 0 means round to
+                                 integer.
+
+    Examples:
+        ```python
+        _pretty_num_str(1000, length=0)
+        # 1k
+        ```
+    """
+    num_str = str(number)
+    suffixes = {
+        2: (1, '', ''),
+        4: (1000, 'k', 'thousand'),
+        7: (1e6, 'M', 'million'),
+        10: (1e9, 'B', 'billion'),
+        }
+    nearest_place = _nearest(len(num_str), suffixes)
+    suffix = suffixes[nearest_place]
+    return str(round(number/suffix[0], length)) + suffix[1]
 
 
 def get_covid_data(url_confirmed=URL_BASE+URL_CONFIRMED,
@@ -53,8 +85,8 @@ def basic_reproduction_ratio(time_series):
     """Returns the basic reproduction ratio as well as gamma and beta
     """
     population = float(time_series['population'])
-    infected = time_series['infected'][1:].astype(float)
-    susceptible = time_series['susceptible'][1:].astype(float)
+    infected = time_series['infected'].astype(float)
+    susceptible = time_series['susceptible'].astype(float)
     ds_dt, _, dr_dt = derivatives(time_series)
     gamma = dr_dt/infected
     beta = -population*ds_dt/infected/susceptible
@@ -133,11 +165,8 @@ def gather_data(data, search):
 def derivatives(time_series):
     """Returns the derivatives with respect to time
     """
-    d_t = np.diff(time_series['mtimes'])
-    d_s = np.diff(time_series['susceptible'])
-    ds_dt = d_s/d_t
-    d_i = np.diff(time_series['infected'])
-    di_dt = d_i/d_t
+    ds_dt = np.gradient(time_series['susceptible'], time_series['mtimes'])
+    di_dt = np.gradient(time_series['infected'], time_series['mtimes'])
     dr_dt = -ds_dt-di_dt
     return ds_dt, di_dt, dr_dt
 
@@ -183,15 +212,15 @@ def make_derivative_plot(axis, time_series, **kwargs):
     s_color = kwargs.get('s_color', 'grey')
     i_color = kwargs.get('i_color', 'blue')
     r_color = kwargs.get('r_color', 'orange')
-    axis.plot_date(mtimes[1:], ds_dt,
+    axis.plot_date(mtimes, ds_dt,
                    color=s_color,
                    label=r'$\frac{dS}{dt}$',
                    **kwargs)
-    axis.plot_date(mtimes[1:], di_dt,
+    axis.plot_date(mtimes, di_dt,
                    color=i_color,
                    label=r'$\frac{dI}{dt}$',
                    **kwargs)
-    axis.plot_date(mtimes[1:], dr_dt,
+    axis.plot_date(mtimes, dr_dt,
                    color=r_color,
                    label=r'$\frac{dR}{dt}$',
                    **kwargs)
@@ -209,7 +238,7 @@ def make_r0_plot(axis, time_series, **kwargs):
 
     r0_color = kwargs.get('r0_color', 'green')
     r0_fit_color = kwargs.get('r0_fit_color', 'black')
-    axis.plot_date(mtimes[1:], ratio,
+    axis.plot_date(mtimes, ratio,
                    color=r0_color,
                    label=r'$R_0$',
                    **kwargs)
@@ -229,41 +258,9 @@ def make_gamma_beta_plot(axis, time_series, **kwargs):
     """
     _, gamma, beta = basic_reproduction_ratio(time_series)
     mtimes = time_series['mtimes']
-    axis.plot_date(mtimes[1:], gamma, label=r'$\gamma$', **kwargs)
-    axis.plot_date(mtimes[1:], beta, label=r'$\beta$', **kwargs)
+    axis.plot_date(mtimes, gamma, label=r'$\gamma$', **kwargs)
+    axis.plot_date(mtimes, beta, label=r'$\beta$', **kwargs)
     axis.legend()
-
-def _pretty_num_str(number, length=1):
-    """Returns a string of the number in a prettier way.
-
-    Args:
-        number (int, float): Number you want to prettify into string.
-        length (int, default=1): Number of decimal places. 0 means round to
-                                 integer.
-
-    Examples:
-        ```python
-        _pretty_num_str(1000, length=0)
-        # 1k
-        ```
-    """
-    num_str = str(number)
-    suffixes = {
-        2: (1, '', ''),
-        4: (1000, 'k', 'thousand'),
-        7: (1e6, 'M', 'million'),
-        10: (1e9, 'B', 'billion'),
-        }
-    nearest_place = _nearest(len(num_str), suffixes)
-    suffix = suffixes[nearest_place]
-    return str(round(number/suffix[0], length)) + suffix[1]
-
-
-def _nearest(pivot, items):
-    """Returns nearest point
-    """
-    return min(items, key=lambda x: abs(x - pivot))
-
 
 def make_plots(data, search=SEARCH):
     """Makes plots of COVID-19 data.
