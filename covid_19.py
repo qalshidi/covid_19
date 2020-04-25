@@ -17,54 +17,6 @@ SEARCH = ('Province_State', 'Michigan')
 # SEARCH = ('Province_State', 'New York')
 
 
-def _nearest(pivot, items):
-    """Returns nearest point
-    """
-    return min(items, key=lambda x: abs(x - pivot))
-
-
-def _parse_url_csv(url):
-    """Parse the url csv file into a dict
-    """
-    return_data = {}
-    with urllib.request.urlopen(url) as datafile:
-        lines = [line.decode('ascii') for line in list(datafile)]
-        headers = lines[0].strip().split(',')
-        reader = csv.DictReader(lines)
-        for header in headers:
-            return_data[header] = []
-        for row in reader:
-            for key, value in row.items():
-                return_data[key].append(value)
-    return return_data
-
-
-def _pretty_num_str(number, length=1):
-    """Returns a string of the number in a prettier way.
-
-    Args:
-        number (int, float): Number you want to prettify into string.
-        length (int, default=1): Number of decimal places. 0 means round to
-                                 integer.
-
-    Examples:
-        ```python
-        _pretty_num_str(1000, length=0)
-        # 1k
-        ```
-    """
-    num_str = str(number)
-    suffixes = {
-        2: (1, '', ''),
-        4: (1000, 'k', 'thousand'),
-        7: (1e6, 'M', 'million'),
-        10: (1e9, 'B', 'billion'),
-        }
-    nearest_place = _nearest(len(num_str), suffixes)
-    suffix = suffixes[nearest_place]
-    return str(round(number/suffix[0], length)) + suffix[1]
-
-
 def get_covid_data(url_confirmed=URL_BASE+URL_CONFIRMED,
                    url_deaths=URL_BASE+URL_DEATHS):
     """Returns dictionary of COVID-19 data from John Hopkins University.
@@ -284,6 +236,56 @@ def make_plots(data, search=SEARCH):
     plt.tight_layout()
 
 
+# HIDDEN FUNCTIONS
+def _nearest(pivot, items):
+    """Returns nearest point
+    """
+    return min(items, key=lambda x: abs(x - pivot))
+
+
+def _parse_url_csv(url):
+    """Parse the url csv file into a dict
+    """
+    return_data = {}
+    with urllib.request.urlopen(url) as datafile:
+        lines = [line.decode('ascii') for line in list(datafile)]
+        headers = lines[0].strip().split(',')
+        reader = csv.DictReader(lines)
+        for header in headers:
+            return_data[header] = []
+        for row in reader:
+            for key, value in row.items():
+                return_data[key].append(value)
+    return return_data
+
+
+def _pretty_num_str(number, length=1):
+    """Returns a string of the number in a prettier way.
+
+    Args:
+        number (int, float): Number you want to prettify into string.
+        length (int, default=1): Number of decimal places. 0 means round to
+                                 integer.
+
+    Examples:
+        ```python
+        _pretty_num_str(1000, length=0)
+        # 1k
+        ```
+    """
+    num_str = str(number)
+    suffixes = {
+        2: (1, '', ''),
+        4: (1000, 'k', 'thousand'),
+        7: (1e6, 'M', 'million'),
+        10: (1e9, 'B', 'billion'),
+        }
+    nearest_place = _nearest(len(num_str), suffixes)
+    suffix = suffixes[nearest_place]
+    return str(round(number/suffix[0], length)) + suffix[1]
+
+
+# MAIN
 if __name__ == '__main__':
     DATA = get_covid_data()
     make_plots(DATA)
